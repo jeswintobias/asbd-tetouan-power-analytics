@@ -1,0 +1,658 @@
+% ASBD End-Semester Hackathon report | Jeswin Tobias J | CS23I1013
+% Build: cd report && tectonic report.tex
+\documentclass[11pt,a4paper]{article}
+\usepackage[sfdefault]{plex-sans}         % IBM Plex Sans
+\usepackage{plex-mono}                    % IBM Plex Mono for code
+\usepackage[a4paper,margin=2.1cm,headheight=14pt]{geometry}
+\usepackage{graphicx,booktabs,tabularx,float,xcolor,enumitem,amsmath,array,multirow}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{fancyhdr,titlesec,tikz}
+\usepackage[section]{placeins}   % keep figures inside their own section
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+\graphicspath{{../plots/}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}X}
+
+\definecolor{accent}{HTML}{2a78d6}
+\definecolor{boxbg}{HTML}{F3F6FB}
+\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.2em}{0.5em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.35em}
+\setlist{itemsep=2pt,topsep=3pt,leftmargin=1.3em}
+\setlength{\parindent}{0pt}\setlength{\parskip}{5pt}
+\emergencystretch=2em
+
+\pagestyle{fancy}\fancyhf{}
+\lhead{\small Jeswin Tobias J \,|\, CS23I1013}
+\rhead{\small ASBD Hackathon: Tetouan Power Consumption}
+\cfoot{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% symbols in maths mode
+\newcommand{\ra}{$\rightarrow$\ }
+\newcommand{\x}{$\times$}
+\newcommand{\gq}{$\geq$}
+\newcommand{\AND}{$\wedge$}
+
+% figure followed by its key inference:  \plot{file}{width}{caption}{inference text}
+\newlength{\figh}\setlength{\figh}{0.44\textheight}   % cap so two figures fit a page
+\newcommand{\plot}[4]{%
+\begin{figure}[H]\centering
+\includegraphics[width=#2\textwidth,height=\figh,keepaspectratio]{#1}
+\caption{#3}\label{fig:#1}\vspace{0.2em}
+\colorbox{boxbg}{\parbox{\dimexpr\textwidth-2\fboxsep}{\small\raggedright\textbf{Inference.} #4}}
+\end{figure}}
+\renewcommand{\topfraction}{0.9}\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.07}\renewcommand{\floatpagefraction}{0.75}
+\setlength{\textfloatsep}{14pt plus 4pt minus 4pt}
+
+\begin{document}
+
+% ------------------------------------------------------------------ title
+\hypersetup{pageanchor=false}
+\begin{titlepage}
+\centering
+\vspace*{\fill}
+{\Huge\bfseries\color{accent} Power Consumption of Tetouan City\par}
+\vspace{0.4cm}
+{\Large Descriptive and Predictive Analytics with DIC, DIANA, COFI and PySpark\par}
+\vspace{1.4cm}
+{\large Name: \textbf{Jeswin Tobias J}\par}
+\vspace{2pt}
+{\large Roll No: \textbf{CS23I1013}\par}
+\vspace{0.8cm}
+{\large Analytics \& Systems of Big Data Practice, End-Semester Hackathon\par}
+{\large IIITDM Kancheepuram \quad|\quad 21 November 2026\par}
+\vspace{1.4cm}
+\colorbox{boxbg}{\parbox{\dimexpr\textwidth-2\fboxsep}{\vspace{6pt}\centering
+{\small\bfseries\color{accent} PROJECT AT A GLANCE}\par\vspace{6pt}
+\small
+\begin{tabularx}{0.92\linewidth}{@{}>{\bfseries}p{2.1cm}Y@{}}
+Dataset & UCI \#849, Power Consumption of Tetouan City (CC BY 4.0)\\[3pt]
+Size & 52,416 readings, one every 10 minutes, 1 Jan to 30 Dec 2017 (364 days)\\[3pt]
+Attributes & temperature, humidity, wind speed, two irradiance flows, power of three zones\\[3pt]
+Techniques & DIC association rules, DIANA clustering, COFI closed itemsets and rules\\[3pt]
+Big data & DIC and COFI on PySpark 4.3 (local mode, 10 cores)\\[3pt]
+Code & \url{https://github.com/jeswintobias/asbd-tetouan-power-analytics}\\
+\end{tabularx}\vspace{4pt}}}
+\vspace*{\fill}
+\end{titlepage}
+\hypersetup{pageanchor=true}
+
+\tableofcontents
+\vspace{1em}
+\section*{Report structure}
+\begin{tabularx}{\textwidth}{@{}lYl@{}}
+\toprule
+Section & Content & Plots\\
+\midrule
+1 & Dataset, assumptions and parameters & none\\
+2 & Preprocessing: cleaning, feature engineering, selection, transformation & 01--06\\
+3 & Descriptive analytics with 14 plot types & 07--20\\
+4 & Association rules with DIC & 21--25\\
+5 & Divisive hierarchical clustering with DIANA & 26--30\\
+6 & Closed itemsets and closed rules with COFI & 31--34\\
+7 & DIC and COFI on PySpark & 35--37\\
+8 & Conclusions and limitations & none\\
+\bottomrule
+\end{tabularx}
+
+% ------------------------------------------------------------------ 1
+\section{Dataset, assumptions and parameters}
+The dataset gives the electricity demand of three distribution zones in Tetouan, a city in northern Morocco,
+along with the local weather, every 10 minutes for 2017. It has no class label. The work is therefore about
+describing demand and finding patterns in it: which conditions go with high or low load, and which kinds of day
+the year contains.
+
+The question lets us assume parameters as long as we state them. Table~\ref{tab:params} lists every assumption
+used anywhere in the report.
+
+\begin{table}[H]\centering\small
+\caption{Assumptions and parameters.}\label{tab:params}
+\begin{tabularx}{\textwidth}{@{}lYY@{}}
+\toprule
+Item & Value & Reason\\
+\midrule
+Validity bounds & temperature $-10$ to 50\,\textdegree C, humidity 0 to 100\,\%, wind \gq 0, irradiance \gq 0, power $>0$ & physical limits\\
+Spike filter & median of the 7 readings around each point ($\pm$30 min); thresholds of $\pm$15\,\% for power, $\pm$2\,\textdegree C for temperature, $\pm$10\,\%RH for humidity & the usual 3\x MAD rule flags 13\,\% of normal readings\\
+Irradiance floor & values below 1 W/m$^2$ set to 0 & night sensor noise (night maximum 0.154 and 0.271 W/m$^2$)\\
+Public holidays & Moroccan national and religious holidays of 2017 (15 days) & day labels\\
+Ramadan & 27 May to 25 June 2017 (30 days) & day label\\
+Eid periods & 26 June to 2 July, 30 August to 6 September & reading the dips in demand\\
+Discretisation & equal-frequency tertiles (Low/Med/High); solar as Dark/Low/High; wind as Calm/Windy split at 3 m/s & each item starts near 33\,\% support\\
+Minimum support & 10\,\% (5,242 transactions) & keeps patterns of up to 6 items (768 itemsets)\\
+Minimum confidence & 70\,\% & a rule must hold in at least 7 of 10 matching readings\\
+DIC station interval & M = 5,000, with 500 to 52,416 tested & about 10\,\% of the data\\
+DIANA input & one row per day; 72 values (24 hourly means for each of 3 zones), z-scored per zone, Euclidean distance & distance matrix of 1 MB instead of 22 GB\\
+DIANA clusters & k = 5 (k = 2 gives the broad split) & see Section 5.3\\
+Spark & PySpark 4.3, \texttt{local[*]}, 10 cores on one laptop; data replicated 1 to 40 times; best of 2 runs & see Section 7\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The raw file needed no repair. It has no null cells, no duplicate rows or timestamps and no missing 10-minute
+slots, and each of the 364 days has exactly 144 readings. Cleaning was therefore about noise.
+
+% ------------------------------------------------------------------ 2
+\section{Preprocessing}
+\subsection{Cleaning noisy data}
+No reading broke the validity bounds.
+
+We did not use IQR to remove outliers. IQR fences assume a single, stable distribution, and power does not have one.
+Its level shifts with the season. All 1,191 readings that IQR flags in Zone 3 fall in July (760) and August
+(431), so removing them would delete the summer peak, which is real demand (Figure~\ref{fig:01_iqr_fence_zone3_by_month}).
+
+Spikes were removed with a fixed-threshold rolling-median filter. Each reading is compared with the median
+of the 7 readings centred on it. If the gap is larger than the threshold in Table~\ref{tab:params}, the reading is
+replaced by that median. We did not use the classic Hampel rule (3\x the scaled MAD). Inside a one-hour window
+these series are smooth and the MAD is close to zero, so that rule flags 6,300 to 7,450 readings per column, about
+13\,\% of the data. In total the filter replaced 15 power values (4 in Zone 1, 1 in Zone 2, 10 in Zone 3) and
+7 weather values (2 temperature, 5 humidity). Irradiance was left alone, since fast changes there come from clouds.
+
+Both irradiance sensors report small positive values at night,
+at most 0.154 and 0.271 W/m$^2$. Values under 1 W/m$^2$ were set to 0. This touches 25,182 timestamps (48\,\%),
+which looks like a lot, but every changed value was below 1 W/m$^2$ (the largest was 0.998). The changes cover all
+readings between 21:00 and 05:59 and none between 09:00 and 17:59, so daylight readings, around 600 W/m$^2$ at noon,
+are unaffected.
+
+\plot{01_iqr_fence_zone3_by_month}{0.85}{IQR fences on Zone 3 power, by month.}
+{Every IQR outlier in Zone 3 falls in July or August. These are the hottest, busiest weeks of the year, so the
+outliers are real summer demand and IQR cannot be used to clean this data.}
+
+\plot{02_hampel_spike_removal}{0.95}{The rolling-median filter on one day of Zone 1.}
+{At 12:00 Zone 1 drops from about 37k to 27k kW and stays there. The filter keeps that drop and replaces only the two
+isolated readings that fall to about 17k kW. Only 22 values change in the whole year.}
+
+\subsection{Feature engineering}
+Every new attribute was added because a later step uses it. ARM in the table means the DIC and COFI transactions.
+
+\begin{table}[H]\centering\small
+\caption{Main engineered features.}
+\begin{tabularx}{\textwidth}{@{}llYl@{}}
+\toprule
+Group & Feature & Definition and reason & Used by\\
+\midrule
+Time & part of day, season & Night 0--6 h, Morning 6--12 h, Afternoon 12--18 h, Evening 18--24 h; seasons by month & ARM, DIANA\\
+Time & hour and day of year as sin/cos & keeps 23:00 close to 00:00 & feature check\\
+Calendar & weekend, holiday, Ramadan, Eid, day type & non-working and religious days & ARM, DIANA\\
+Weather & wind regime & wind sits near 0.08 or near 4.9 m/s, so it is split into Calm and Windy at 3 m/s & ARM\\
+Weather & dew point, apparent temp., degree-hours & Magnus and BoM formulas; heating and cooling degree-hours with bases 18 and 24\,\textdegree C & feature check\\
+Weather & diffuse fraction, solar mean & cloudiness, and one solar level & ARM, check\\
+Weather & hours since sunset & sunset found from irradiance (17:30 in winter, 20:50 in summer) & feature check\\
+Power & total, zone shares, load factor & city load, zone mix, daily mean over daily peak & ARM, DIANA\\
+Target & load level & total power split into tertiles & feature check\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Two candidate features were dropped after checking them. A ``dominant zone'' feature had almost no variance,
+because Zone 1 is the largest zone in 99.8\,\% of readings. A zone-transfer feature correlated with load at only
+$r = -0.05$. One calendar effect was large enough to keep: between 02:00 and 05:00, load averaged 74.3k kW during
+Ramadan and 56.8k kW in the rest of May and June.
+
+\subsection{Selecting task-relevant attributes}
+Features with $|r| > 0.9$ were treated as redundant and only one was kept. Relevance was scored by mutual
+information with load level. To check the selected set as a whole we used KNN (k = 15, five folds with whole weeks
+held out, macro-F1). KNN served only as this check. It is not one of our predictive techniques, since DIANA was
+chosen for clustering (Section 5). The check kept the sunset features, which raised macro-F1 from 0.846 to 0.858.
+Weekend, Ramadan and Eid flags changed the score by about 0.001, so they stay out of reading-level models and are
+used instead as ARM items and as labels for DIANA's days.
+
+\plot{03_feature_correlation_heatmap}{0.8}{Correlation between candidate features.}
+{Solar mean tracks general diffuse irradiance, and apparent temperature tracks temperature ($|r|>0.9$), so one of
+each pair is dropped. The two irradiance flows are only moderately related and the zones correlate at 0.57 to 0.83,
+so both flows and all three zones are kept.}
+
+\plot{04_mutual_information_ranking}{0.8}{Mutual information of each feature with load level.}
+{Time of day explains load level best (hour sin 0.40, sunset cos 0.36), followed by solar radiation, temperature and
+season. Calendar flags score close to zero because they cover few readings, which is why they are used at day level.}
+
+\subsection{Transformation}
+Irradiance is 48\,\% zeros with a long tail, so it was log-transformed (\texttt{log1p}). Features were scaled with
+min-max and z-score, and DIANA uses a z-score computed separately for each zone. For DIC and COFI, each 10-minute
+reading became one transaction of about 11 items, for example \{Temp=High, Hum=Low, Wind=Calm, Solar=High,
+Afternoon, Summer, Workday, Z1=High, \ldots\}. That gives 52,416 transactions over 35 items. For DIANA the readings
+were averaged into 364 daily profiles of 72 values each.
+
+\plot{05_log_transform_irradiance}{0.9}{Irradiance before and after the log1p transform.}
+{Raw irradiance has a tall spike at zero and a long right tail (skew 1.31). After log1p the tail is compressed,
+so a few very bright readings no longer dominate distances.}
+
+\plot{06_item_support}{0.85}{Support of the 35 transaction items.}
+{Most items sit between 25 and 35\,\% support, as tertiles should. Holiday (4.1\,\%) and Ramadan (8.2\,\%) are the
+rare ones. A 10\,\% minimum support keeps the common patterns but leaves these two items out of the rules, which
+we note as a limitation.}
+
+% ------------------------------------------------------------------ 3
+\section{Descriptive analytics}
+The question asks for at least ten distinct plots from the course. We used 14 types, each picked for the kind of
+attribute it suits. Energy totals cover the 364 days in the data.
+
+\begin{table}[H]\centering\small
+\caption{Plot types and the question each one answers.}
+\begin{tabularx}{\textwidth}{@{}rllY@{}}
+\toprule
+\# & Plot & Attribute type & Question\\
+\midrule
+07 & Histogram with KDE & continuous & shape, skew, number of peaks\\
+08 & Box plot & numeric by category & demand by day type\\
+09 & Violin & numeric by category & Ramadan effect by part of day\\
+10 & Line & time series & trend through the year\\
+11 & Stacked area & time series, part of a whole & each zone's share over the day\\
+12 & Scatter & numeric vs numeric & temperature and load\\
+13 & Donut & part of a whole & energy share per zone\\
+14 & Grouped bar & category by category & season and zone\\
+15 & Pareto & ranked contribution & which hours carry the energy\\
+16 & Radar & profile on several metrics & how the zones differ\\
+17 & Heatmap & two time axes & when the peak happens\\
+18 & Treemap & hierarchy & energy by season, then zone\\
+19 & Dot plot & small summary (36 values) & monthly level per zone\\
+20 & Stem-and-leaf & small summary (52 values) & weekly load with every value kept\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\plot{07_histogram_kde}{0.95}{Histogram with KDE for every numeric attribute.}
+{Temperature is close to symmetric (skew 0.20) and humidity leans left ($-$0.63). Wind has two peaks: 61\,\% of
+readings are under 0.5 m/s and 39\,\% are over 4 m/s, with little in between, so it is treated as two regimes.
+Irradiance is 48\,\% zeros, which led to the log transform, and Zone 3's long right tail is its summer rise.}
+
+\plot{08_box_zone_by_daytype}{0.85}{Box plot of zone demand by day type.}
+{At weekends the median falls 9.5\,\% in Zone 2 and 4.5\,\% in Zone 1, while Zone 3 rises 1.2\,\%. Zone 2 depends
+most on working days. Zone 3 is 7.3\,\% higher on holidays, but 7 of the 15 holidays fall in July to September, its
+busy season, so this is probably a seasonal effect.}
+
+\plot{09_violin_ramadan_part_of_day}{0.85}{Violin plot of city load by part of day, Ramadan against the rest of May and June.}
+{The comparison uses the rest of May and June, which had similar weather. During Ramadan the median night load is
+41\,\% higher (79.5k against 56.3k kW), the morning is 11\,\% lower and the evening 8\,\% higher. Demand moves from
+morning to night. Pre-dawn meals and later working hours could explain this, though the data does not record either.}
+
+\plot{10_line_daily_trend}{0.95}{Daily mean consumption through 2017.}
+{All three zones peak in July and August. Zone 3 swings the most: its highest month is 2.55 times its lowest, against
+1.26 for Zone 1 and 1.40 for Zone 2. After summer the zones part ways, with Zone 3 down to 11.0k kW in December and
+Zone 2 up to 23.7k kW. The sharp dips at the end of June and around 1 September fall on Eid al-Fitr and Eid al-Adha.}
+
+\plot{11_stacked_area_daily_profile}{0.85}{Stacked area chart of the average day, split by zone.}
+{City load is lowest at 06:50 (49.7k kW) and highest at 20:10 (98.4k kW), about twice as much. Zone 3's share grows
+from 23.5\,\% at the low point to 26.5\,\% at the peak, and its own daily swing (2.26 times) is the largest. The
+evening climb lines up with sunset, so lighting is one likely cause.}
+
+\plot{12_scatter_temp_vs_load}{0.8}{Temperature against city load, coloured by hour.}
+{Across all readings $r = 0.49$, but within a single hour the average is $r = 0.59$ and reaches 0.77, because time
+of day hides part of the temperature effect. Readings above 30\,\textdegree C average 95.5k kW against 71.2k kW
+overall, 34\,\% more. Evening readings stay high even at 10 to 15\,\textdegree C.}
+
+\plot{13_donut_energy_share}{0.6}{Each zone's share of energy over the 364 days.}
+{The city used about 622 GWh over the 364 days. Zone 1 took 45.4\,\% (283 GWh), Zone 2 29.5\,\% (184 GWh) and
+Zone 3 25.0\,\% (156 GWh). Zone 1 is close to half the city, while Zone 3 is the smallest and the least steady
+(see plots 10 and 16).}
+
+\plot{14_grouped_bar_season_zone}{0.8}{Mean load by season and zone.}
+{From winter to summer, Zone 3 rises 59.3\,\%, Zone 1 17.5\,\% and Zone 2 12.3\,\%. Zone 3 is lowest in autumn
+(13.7k kW) and passes Zone 2 only in summer, so the order of the zones depends on the season. That is why season is
+one of the ARM items.}
+
+\plot{15_pareto_energy_by_hour}{0.85}{Pareto chart of energy by hour of day.}
+{The five hours from 18:00 to 22:00 carry about 27\,\% of each day's energy, and 20:00 alone carries 5.74\,\%, twice
+as much as 06:00. Reaching 80\,\% of the energy takes 18 of the 24 hours, so there is no 80/20 pattern; the base load
+is large. Any effort to cut the peak should focus on the evening.}
+
+\plot{16_radar_zone_profiles}{0.6}{Radar chart of the zones on six metrics, each scaled by its maximum.}
+{Zone 1 is the largest and steadiest (coefficient of variation 0.22). Zone 3 varies most (0.37) and is 1.59 times
+higher in summer than in winter. Zone 2 has the lowest weekend-to-workday ratio (0.92). All three have an
+evening-to-night ratio near 1.8, so the evening peak is city-wide. Zone 3's seasonal pattern fits a coastal area
+with summer visitors, but the data cannot confirm that.}
+
+\plot{17_heatmap_hour_month}{0.72}{Mean city load by hour and month.}
+{The peak hour moves with sunset, from 18:00 in November and December to 20:00 from April to August. The highest
+cell is July at 20:00 (121k kW) and the lowest is May at 05:00 (45.6k kW). Between midnight and 03:00, June reads
+74k to 88k kW against 58k to 68k kW in May, which is Ramadan. July and August stay high through the whole day.}
+
+\plot{18_treemap_season_zone}{0.72}{Treemap of energy by season, then zone (area in GWh).}
+{Summer is the largest season with 184 GWh (29.6\,\%) and winter the smallest with 142 GWh. Summer in Zone 1 is the
+largest single block (12.6\,\% of the total) and autumn in Zone 3 the smallest (4.8\,\%). Summer is the only season
+where Zone 3 (54 GWh) uses more than Zone 2 (51 GWh).}
+
+\plot{19_dot_plot_monthly_zone}{0.85}{Monthly mean per zone (36 values).}
+{Zone 1 is always on top, between 29k and 36k kW. Zone 3 is above Zone 2 in April and July and equal in August.
+From September the gap opens until Zone 2 is 12.6k kW ahead in December. Zones 2 and 3 move in opposite directions
+through the year, and DIANA picks up the same swap later.}
+
+The weekly summary has only 52 values, which is why we used a stem-and-leaf plot for it. Each weekly value can be
+read off the plot to the nearest 1,000 kW, so the summary could be rebuilt from the figure, much like reading a
+short CSV, and the shape of the distribution is still visible. A histogram would hide the values inside its bins.
+
+\plot{20_stem_and_leaf_weekly_load}{0.6}{Stem-and-leaf plot of weekly mean city load (52 weeks). Key: 7L\,|\,3 = 73,000 kW.}
+{37 of the 52 weeks fall between 63k and 74k kW (median 68k, quartiles 67k and 72k). All 8 weeks at or above 80k kW
+start between 2 July and 20 August, and the highest is 95k. The right tail is the summer peak.}
+
+These plots point to time of day, season, Ramadan and day type as the main structure in the data. Those become the
+main items for DIC and COFI, and the labels used to read DIANA's clusters.
+
+% ------------------------------------------------------------------ 4
+\section{Association rules with DIC}
+\subsection{Method}
+Apriori reads the whole dataset once for each itemset size. DIC (Dynamic Itemset Counting) puts a station every
+M transactions and lets a larger itemset start counting at any station, as soon as all of its subsets look frequent.
+Each itemset is in one of four states. A dashed circle is still counting and below minimum support. A dashed square
+is still counting but already above it. A solid square has finished and is frequent, and a solid circle has
+finished and is not. An itemset stops counting once it has seen every transaction, one full lap after it started.
+We wrote DIC from scratch in \texttt{src/arm.py}.
+
+
+\subsection{Results}
+With 10\,\% support, 70\,\% confidence and M = 5,000, DIC found 768 frequent itemsets (33, 224, 281, 172, 52 and 6
+of sizes 1 to 6). They match mlxtend's Apriori and our own Apriori in both itemsets and counts. DIC needed 5.57
+passes over the data at M = 5,000 and 4.92 at M = 500, against 6.0 for Apriori, so up to 18\,\% fewer scans. In
+memory, though, DIC was slower (0.63 s against 0.18 s) and held more counters at once (831 against 686). It helps
+when each scan is expensive, as with data on disk or spread across machines.
+
+1,800 rules reached 70\,\% confidence. We removed a rule when a smaller left-hand side gave the same right-hand side
+with equal or higher confidence, which left 1,098 rules, all with lift above 1. Of these, 43 have only conditions
+(time, weather, day) on the left and only load levels on the right. Those are the rules that say when demand is high
+or low.
+
+\begin{table}[H]\centering\small
+\caption{Strongest rules from conditions to load (all rules: \texttt{outputs/dic\_rules.csv}).}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Rule & Support & Confidence & Lift\\
+\midrule
+Night \AND Temp=Low \ra Z1=Low & 10.5\,\% & 96.8\,\% & 2.90\\
+Night \AND Temp=Low \ra Total=Low & 10.2\,\% & 94.6\,\% & 2.84\\
+Night \AND Wind=Calm \ra Z1=Low & 13.6\,\% & 86.0\,\% & 2.58\\
+Summer \AND Temp=High \AND Wind=Windy \ra Z3=High & 14.6\,\% & 86.0\,\% & 2.58\\
+Evening \AND Workday \ra Total=High & 14.6\,\% & 84.8\,\% & 2.54\\
+Evening \ra Total=High & 21.1\,\% & 84.4\,\% & 2.53\\
+\midrule
+Temp=High \AND Z1=High \AND Z3=High \ra Summer \AND Total=High \AND Z2=High & 10.3\,\% & 75.7\,\% & 5.96\\
+\bottomrule
+\end{tabular}
+\end{table}
+These rules describe readings taken at the same moment. They say which conditions and load levels occur together,
+not what load will be later.
+
+\plot{21_dic_itemset_states}{0.9}{Number of itemsets in each DIC state at every station (M = 5,000).}
+{Pairs start counting at the second station, after 10,000 transactions, long before the first pass ends. The number
+of dashed circles peaks at about 720 around pass 1.4, and everything has finished after 5.57 passes. Holiday
+(4.1\,\%) and Ramadan (8.2\,\%) end as solid circles.}
+
+\plot{22_dic_passes_time_vs_M}{0.95}{Effect of the station interval M and of data order on DIC.}
+{Smaller M means fewer passes (4.92 at M = 500). With M equal to the whole dataset DIC behaves like Apriori and
+needs 6 passes. More stations also mean more bookkeeping, and the run takes 4.2 s at M = 500. Shuffled data needs
+fewer passes at medium M (5.19 against 5.57), because readings in time order arrive season by season, and DIC works
+best when the data is evenly mixed.}
+
+\plot{23_dic_rules_support_confidence}{0.8}{Support against confidence for the 1,098 rules, coloured by lift.}
+{Most rules sit between 10 and 15\,\% support. The highest lifts, around 5 to 6, all describe the same situation:
+summer, high temperature and high load in every zone. In hot weather the three zones are high together. Broad,
+high-support rules are closer to what chance alone would give.}
+
+\plot{24_dic_top_context_load_rules}{0.9}{Top rules from conditions to load, by confidence.}
+{Cold nights go with low load 95 to 97\,\% of the time, evenings with high load 84\,\% of the time, and hot, windy
+summer readings with high Zone 3 load 86\,\% of the time.}
+
+\plot{25_dic_lift_matrix_context_load}{0.85}{Lift for each pair of condition and load level.}
+{Evening has a lift of 2.53 with high total load and almost none (0.01) with low load. Ramadan has a lift of 1.52
+with high load, but its support of 8.2\,\% is under the 10\,\% threshold, so it cannot appear in a rule. Holiday
+sits near 1.0 and weekend at 1.11 with low load, so neither changes city demand much.}
+
+% ------------------------------------------------------------------ 5
+\section{Divisive hierarchical clustering with DIANA}
+\subsection{Why DIANA and not KNN}
+The question allows KNN or DIANA, whichever suits the data. This data has no class label and the goal is to find
+types of day, so an unsupervised method fits. KNN is a supervised classifier and would need a label made up from
+the power columns. DIANA also gives the dendrogram the question asks for.
+
+\subsection{Method}
+DIANA starts with every object in one cluster and keeps splitting. At each step it takes the cluster with the
+largest diameter. The object with the largest mean distance to the rest leaves first and starts a splinter group.
+Other objects follow while they are closer, on average, to the splinter group than to the old cluster. This repeats
+until every object is on its own, and the diameter at each split gives the height in the dendrogram. We wrote it
+from scratch in \texttt{src/diana.py}.
+
+Each object is one day, 364 in all. With one row per 10-minute reading the distance matrix would need about 22 GB,
+with hourly rows about 0.6 GB, and with daily rows about 1 MB. Each day is described by 72 values, the hourly mean of
+each zone, because two days can have the same city total while different zones peak. Each zone's values are
+z-scored separately, or Zone 1 (around 32k kW) would outweigh Zone 3 (around 18k kW). Season, day type, Ramadan and
+Eid are not given to DIANA. We used them only afterwards, to read the clusters.
+
+
+\subsection{Choosing k and checking quality}
+The tree has a divisive coefficient of 0.932 and a cophenetic correlation of 0.817. Two clusters give the clearest
+split (silhouette 0.491): 73 hot-season days against the rest of the year. We chose five clusters to describe the
+year in more detail. Silhouette has a local peak there (0.387), and the split height drops after the fourth split,
+from 11.95 to 8.83. The peak is narrow, since k = 6 scores 0.382 and k = 7 scores 0.376, so k = 5 is a descriptive
+choice and k = 6 or 7 would also be defensible. Clustering the raw kW values gives nearly the same partition
+(adjusted Rand index 0.854).
+
+\plot{26_diana_choose_k}{0.95}{Silhouette and split height used to choose the number of clusters.}
+{Silhouette is 0.491 at k = 2 and has a smaller local peak of 0.387 at k = 5, with 0.382 at k = 6 and 0.376 at k = 7.
+Split height falls after the fourth split. Two clusters give the broad hot-season split, and five give day types
+that can be described.}
+
+\plot{27_diana_dendrogram}{1.0}{DIANA dendrogram of the 364 days, cut at k = 5 (colours show the clusters).}
+{The first split, at a diameter of 19.8, separates the 73 hot-season days from the rest, so season is the main
+structure in the data. The two Ramadan-associated groups are more spread out inside than the other three.}
+
+\subsection{The five day types}
+\begin{table}[H]\centering\small
+\caption{Day types found by DIANA (k = 5). Calendar labels were not used to form them.}
+\begin{tabularx}{\textwidth}{@{}llrY@{}}
+\toprule
+Cluster & Name & Days & Profile\\
+\midrule
+C0 & Base & 180 & January to mid-October, mild (16.6\,\textdegree C), 67.7k kW, peak at 20:00; includes the Eid al-Adha week\\
+C1 & Ramadan-associated A & 24 & 18 Ramadan days (27 May to 12 June), the Eid al-Fitr days and 4 others; Zone 1 at 03:00 is 32.1k kW against 23.7k in Base\\
+C2 & Ramadan-associated B & 21 & 12 Ramadan days (13 to 25 June), the week after Eid and a few summer days; same night pattern, warmer (23.3\,\textdegree C)\\
+C3 & Peak summer & 52 & 4 July to 25 August, 26.7\,\textdegree C, 89.0k kW (31\,\% above Base); Zone 3 at 20:00 is 40.0k kW\\
+C4 & Autumn and winter & 87 & mid-September to December; Zone 3 falls to 17.6k kW at 20:00 while Zone 2 rises to 31.2k; peak at 18:00\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+All 30 Ramadan days ended up in C1 and C2, even though DIANA never saw the calendar. The two clusters also hold
+15 other days, so they are better described as Ramadan-associated than as Ramadan clusters. Pre-dawn meals,
+travel around Eid and early-summer visitors in Zone 3 could all play a part; we did not test these. Weekends never
+form a cluster of their own: every cluster is 21 to 38\,\% weekend days.
+
+\plot{28_diana_cluster_profiles}{1.0}{Average 24-hour profile of each cluster, per zone.}
+{The Ramadan-associated clusters have high night load. Peak summer is high all day, with Zone 3 at 40k kW in the
+evening. In autumn and winter Zone 2 passes Zone 3 and the peak moves to 18:00. A profile of city totals would hide
+this swap, which is why each zone keeps its own 24 columns.}
+
+\plot{29_diana_calendar}{0.85}{The 2017 calendar coloured by DIANA cluster.}
+{The clusters form unbroken stretches of the year. C1 and C2 cover late May to early July around Ramadan and C3
+covers July and August. DIANA found these seasons without being given any dates.}
+
+\plot{30_diana_silhouette}{0.85}{Silhouette of every day, grouped by cluster.}
+{Peak summer (0.467), autumn and winter (0.449) and Base (0.398) are well separated. The Ramadan-associated clusters
+are weak (0.167 and 0.082) and contain all 8 days with a negative score. Those days share the night pattern but their
+daytime load sits between Base and summer. The next split, at k = 6, separates exactly the two Eid al-Fitr days
+(26 and 27 June).}
+
+% ------------------------------------------------------------------ 6
+\section{Closed itemsets and closed rules with COFI}
+\subsection{Method}
+COFI mines frequent itemsets with one small tree per item. We wrote it from scratch in \texttt{src/cofi.py}. It
+works in four steps.
+\begin{enumerate}
+\item Merge identical transactions (52,416 become 3,986 distinct ones with counts), count item supports and build an
+FP-tree with items in order of support.
+\item Take the items one at a time, least frequent first. For item $i$, build a Co-Occurrence Frequent-Item tree from
+the FP-tree paths above $i$. Each node keeps a count and a participation counter.
+\item Mine that tree. A branch's count is the node count minus its participation, every sub-pattern of the branch
+(with $i$) gets that count, and participation is then raised along the branch so nothing is counted twice.
+\item Throw the tree away before building the next, so only one COFI-tree is in memory at a time.
+\end{enumerate}
+An itemset is closed if no superset one item larger has the same support, and maximal if no such superset is
+frequent. Every maximal itemset is closed and every closed itemset is frequent. Closed rules use the Min-Max bases.
+Exact rules go from a minimal generator $G$ to the rest of its closure, with 100\,\% confidence. Approximate rules
+go from $G$ to a larger closed set $Z$, and the set is reduced so no rule is implied by another.
+
+
+\subsection{Results}
+At 10\,\% support and 70\,\% confidence COFI finds the same 768 frequent itemsets and counts as DIC and Apriori. The
+FP-tree has 14,275 nodes, and the largest COFI-tree (for \emph{Afternoon}) has 429, 3\,\% of the FP-tree.
+
+753 of the 768 itemsets are closed (98\,\%) and 198 are maximal (26\,\%). The full list, with minimal generators,
+is in \texttt{outputs/cofi\_closed\_itemsets.csv}, and the supports of all 768 frequent itemsets can be rebuilt
+from the closed ones. The 15 itemsets that are not closed all come from arithmetic: if Z1, Z2 and Z3 are all High,
+Total is High too (and the same for Low), because Total = Z1 + Z2 + Z3.
+
+The Min-Max basis has 15 exact and 1,111 approximate rules, 1,126 in all, against 1,800 rules from the frequent
+itemsets (37\,\% fewer). We checked that the support and confidence of all 1,800 rules can be recomputed from the
+753 closed itemsets; the largest error was $2.2\times10^{-16}$. In theory the full rule set can also be derived from
+the basis itself, but we did not implement that, so we only claim the rebuild from the closed itemsets.
+
+\begin{table}[H]\centering\small
+\caption{Longest closed itemsets (6 items, all maximal).}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Closed itemset & Count & Support\\
+\midrule
+\{Night, Solar=Dark, Total=Low, Wind=Calm, Z1=Low, Z2=Low\} & 6,270 & 12.0\,\%\\
+\{Night, Solar=Dark, Total=Low, Workday, Z1=Low, Z2=Low\} & 6,027 & 11.5\,\%\\
+\{Solar=Dark, Temp=Low, Total=Low, Wind=Calm, Z1=Low, Z2=Low\} & 5,428 & 10.4\,\%\\
+\{Summer, Temp=High, Total=High, Z1=High, Z2=High, Z3=High\} & 5,411 & 10.3\,\%\\
+\bottomrule
+\end{tabular}
+\end{table}
+An exact closed rule is \{Z1=High, Z2=High, Z3=High\} \ra \{Total=High\} with 100\,\% confidence, which is the sum
+again. An approximate one is \{Summer, Z1=High, Z2=High, Z3=High\} \ra \{Temp=High, Total=High\} with 88.6\,\%
+confidence and lift 5.1. The strongest closed rules from conditions to load are the same as DIC's: cold nights go
+with low load (95\,\%), hot windy summers with high Zone 3 load (86\,\%) and evenings with high load (84\,\%).
+
+\plot{31_cofi_tree_sizes}{0.85}{Size of each item's COFI-tree compared with the FP-tree.}
+{The largest tree, for Afternoon, has 429 nodes, 3\,\% of the 14,275-node FP-tree. The most frequent item, Workday,
+has an empty tree because no item sits above it. Since only one small tree exists at a time, mining needs very
+little memory.}
+
+\plot{32_fi_cfi_mfi_vs_support}{0.9}{Frequent, closed and maximal itemsets for minimum support from 2 to 20\,\%.}
+{At 20\,\% support 99\,\% of frequent itemsets are closed. At 2\,\% the share falls to 85\,\% (15,924 of 18,770),
+because lower support lets in long itemsets in which exact co-occurrence is more common. Maximal itemsets are always
+far fewer (12 to 46\,\%), but they do not keep support counts.}
+
+\plot{33_rule_set_sizes}{0.8}{Number of rules at 70\,\% confidence under each method.}
+{The 1,800 rules drop to 1,098 with DIC's pruning and to 1,126 in the Min-Max basis (15 exact, 1,111 approximate).
+The basis is about as small as the pruned set, and its closed itemsets reproduce every one of the 1,800 rules.}
+
+\plot{34_cofi_dic_apriori_runtime}{0.85}{Run time of COFI, DIC and Apriori against minimum support (log scale).}
+{All three were timed from the raw transactions, best of two runs. DIC is the slowest at every support up to 10\,\%
+(0.37 s against 0.06 s for COFI at 10\,\%). COFI beats Apriori between 8 and 20\,\% (0.06 s against 0.14 s at
+10\,\%) and loses at 5\,\% (0.74 s against 0.57 s). COFI still enumerates candidates, 118,045 sub-patterns at 10\,\%
+and 4.3 million at 5\,\%, against Apriori's 1,575 and 6,453. What it avoids is one global candidate set and repeated
+scans of the data, and the growing number of sub-patterns is why it slows down at low support.}
+
+% ------------------------------------------------------------------ 7
+\section{DIC and COFI on PySpark}
+\subsection{How the two techniques run on Spark}
+For DIC, the driver keeps the same state machine as the single-machine code. Each station's block of M transactions
+is stored as 10 partitions and counted in parallel with \texttt{sc.runJob}. Transactions are stored as 64-bit masks,
+so checking whether a transaction contains an itemset is a single AND.
+
+For COFI, each item's tree is independent of the others, so each becomes one Spark task that runs the same mining code
+as Section 6. Before that, a map-side combiner merges identical transactions inside each partition, much like a
+partial \texttt{GROUP BY} in SQL, so only about 4,000 weighted transactions are turned into FP-paths. DIANA was not
+moved to Spark, because each split depends on the one before and its input is only 1 MB.
+
+The tests ran on one laptop with Spark in \texttt{local[*]} mode on 10 cores. To get larger inputs we repeated the
+52,416 transactions 1, 5, 10, 20 and 40 times, up to 2,096,640. Supports do not change under repetition, so every
+count must be exactly k times the original. This held at all five sizes for both techniques. Times are the best of
+two runs. Mining times use data already cached in Spark, and loading and start-up are listed separately. The
+single-machine COFI merges duplicates in the same way, so Spark does not get a shortcut the baseline lacks.
+
+\subsection{Results}
+\begin{table}[H]\centering\small
+\caption{Performance at 40 times the data (2,096,640 transactions), not counting Spark start-up (2.7 s).}
+\begin{tabularx}{\textwidth}{@{}lRRRRR@{}}
+\toprule
+Algorithm & Python (s) & Spark mining, cached (s) & Speed-up, cached & Spark load and mining (s) & Speed-up with loading\\
+\midrule
+DIC & 3.659 & 1.219 & 3.00\x & 2.282 & 1.60\x\\
+COFI & 0.477 & 0.369 & 1.30\x & 0.707 & 0.68\x\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+For DIC, Python's time grows in step with the data (0.33 to 3.66 s) while Spark stays near 1.2 s. Spark catches up at
+about 0.55 million transactions and is 3.0 times faster at 2.1 million, or 1.6 times once loading is counted.
+
+For COFI, Spark catches up at about 1.5 million transactions and is 1.30 times faster at 2.1 million on cached data.
+Once the time to load the data into Spark is added, it is slower than Python (0.68 times).
+
+The speed-up grew across the sizes we tested. Each extra million rows cost Python 1.65 s for DIC and 0.21 s for COFI,
+and Spark 0.08 s for each. We only measured this on repeated data, so we cannot say the same holds for data with many
+more distinct transactions. On the original 52k transactions Python wins for both (Spark runs at 0.27 times the
+speed for DIC and 0.23 for COFI), because start-up and per-job costs dominate.
+
+\plot{35_spark_runtime_vs_size}{1.0}{Run time against data size: Python on 1 core and PySpark on 10 cores.}
+{Python's DIC time grows in a straight line while Spark's stays near 1.2 s. For COFI, Python goes from 0.05 to 0.48 s
+and Spark from 0.20 to 0.37 s. Most of Spark's cost is fixed, while Python pays for every row, so Spark pulls ahead
+as the data grows.}
+
+\plot{36_spark_speedup_vs_size}{0.85}{Speed-up of PySpark over single-machine Python (above 1 means Spark is faster).}
+{DIC passes the break-even line near 0.55 million transactions and reaches 3.0 times; COFI passes it near 1.5 million
+and reaches 1.30 times. Spark only helps above roughly half a million to 1.5 million transactions, and on the original
+data it is slower.}
+
+\subsection{Where the COFI gain comes from}
+\begin{table}[H]\centering\small
+\caption{Naive and combiner versions of Spark COFI: same data (2.1 million), same 10 cores, same output.}
+\begin{tabularx}{\textwidth}{@{}lRRRRR@{}}
+\toprule
+Version & Spark jobs & Rows after merging & FP-path records & Time (s) & Speed-up over Python\\
+\midrule
+Naive & 3 & 2,096,640 & 22,976,640 & 2.54 & 0.19\x\\
+Combiner & 2 & 79,720 & 43,508 & 0.38 & 1.25\x\\
+\bottomrule
+\end{tabularx}
+\end{table}
+The first Spark version turned every row into FP-paths before merging anything. Merging identical transactions
+first, inside each partition, cut the records generated by a factor of 528 and made Spark COFI 6.7 times faster. On
+Spark most of the time went into creating and moving records; the mining itself was cheap. We counted records generated; we did not
+measure bytes sent over the network.
+
+We also tried a version that first filters each transaction to its frequent items and then emits every prefix. It
+gave the same output but took 0.94 to 1.44 s at 40 times the data, because it reads the raw rows twice. One point in
+its favour is that it never collects the distinct transactions on the driver. Our version does, which is fine with
+about 4,000 of them but would become a bottleneck with millions.
+
+\plot{37_spark_speedup_vs_cores}{0.8}{Speed-up against number of cores for 2.1 million transactions.}
+{On 10 cores COFI runs 3.8 times faster than on one (1.39 to 0.36 s) and DIC 2.4 times faster (2.93 to 1.21 s).
+Neither is close to linear. Solving Amdahl's law, $S = 1/(f + (1-f)/p)$, for the serial part gives about 18\,\% for
+COFI (job scheduling and driver work) and about 35\,\% for DIC (the state machine on the driver and one job per
+station).}
+
+Spark start-up (2.7 s) and loading (0.3 to 1.1 s at 40 times the data) are paid once. With start-up included, Spark
+DIC at 2.1 million transactions takes about 5.0 s against 3.7 s in Python, so a single run at this size does not pay
+off. Spark becomes worthwhile when the session and cached data are reused, for example to mine at several support
+levels, or when the data no longer fits on one machine.
+
+% ------------------------------------------------------------------ 8
+\section{Conclusions and limitations}
+\begin{table}[H]\centering\small
+\caption{Summary of findings.}
+\begin{tabularx}{\textwidth}{@{}lY@{}}
+\toprule
+Part & Main result\\
+\midrule
+Preprocessing & complete data; IQR rejected because it would delete real summer demand; 22 spike values fixed; night irradiance set to zero; 35-item transactions; 364 daily profiles of 72 values\\
+Descriptive & evening peak about twice the morning low and moving with sunset; Zone 3 most seasonal (59\,\% higher in summer); Ramadan moves load to the night (41\,\% higher); Zone 2 most tied to working days\\
+DIC & 768 itemsets in 5.57 passes against Apriori's 6.0; 1,098 rules after pruning; cold nights with low load (95\,\%), evenings with high load (84\,\%), hot windy summers with high Zone 3 load (86\,\%)\\
+DIANA & five day types (divisive coefficient 0.932); season is the first split; all 30 Ramadan days fall into two clusters without the calendar; Zones 2 and 3 swap places after summer\\
+COFI & 753 closed and 198 maximal itemsets; 1,126 Min-Max rules; every rule can be recomputed from the closed itemsets\\
+PySpark & identical results at every size; on cached data 3.0 times faster for DIC and 1.30 times for COFI at 2.1 million transactions; the combiner made Spark COFI 6.7 times faster\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The work has some limits. Holiday (4.1\,\%) and Ramadan (8.2\,\%) are below the 10\,\% support threshold, so no
+rule mentions them; a lower threshold or mining those days separately would be needed. The two Ramadan-associated
+clusters are weak (silhouette 0.17 and 0.08), include 15 days outside Ramadan, and k = 5 is only slightly ahead of
+k = 6 and 7. Causes such as tourism, lighting or meal times are not in the data, so we give them only as possible
+explanations. Finally, Spark was tested on one machine with repeated data, so the number of distinct transactions
+never grew; a real cluster or more varied data could behave differently.
+
+\end{document}
