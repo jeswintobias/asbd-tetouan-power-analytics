@@ -1,0 +1,22 @@
+# Personal study notes — not part of the submission
+references/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Spark artefacts (created if Spark SQL / Hive is used)
+spark-warehouse/
+metastore_db/
+derby.log
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

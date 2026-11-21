@@ -1,0 +1,25 @@
+# ASBD Hackathon — Jeswin Tobias J | CS23I1013
+# Tested with Python 3.12.0 and OpenJDK 21 (PySpark 4.x needs Java 17 or 21).
+
+# data + numerics
+numpy==2.5.2
+pandas==3.0.5
+scipy==1.18.1
+scikit-learn==1.9.0
+
+# plots
+matplotlib==3.11.1
+seaborn==0.13.2
+squarify==0.4.5
+
+# association rules (reference check for DIC / COFI)
+mlxtend==0.25.0
+
+# big data
+pyspark==4.3.0
+
+# notebooks
+jupyterlab==4.6.3
+ipykernel==7.3.0
+nbformat==5.11.0
+nbconvert==7.17.1
