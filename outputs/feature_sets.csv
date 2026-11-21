@@ -1,0 +1,2 @@
+KNN_FEATURES,"hour_sin,sunset_cos,sunset_sin,hour_cos,log_gen_diffuse,temperature,log_diffuse,diffuse_fraction,cdh,is_daylight,doy_sin,hdh,humidity,wind_speed,doy_cos,dew_point"
+ARM_ATTRS,"temperature,humidity,wind_regime,solar_level,part_of_day,season,day_type,is_ramadan,zone1,zone2,zone3,total_power"

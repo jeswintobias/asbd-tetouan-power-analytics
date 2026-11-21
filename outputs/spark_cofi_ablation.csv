@@ -1,0 +1,3 @@
+version,Spark jobs,rows after map-side merge,FP-path records projected,time (s),speed-up vs single-machine
+naive (per record),3,2096640,22976640,2.5421480829973007,0.18782094961043594
+combiner (per distinct transaction),2,79720,43508,0.38083650000044145,1.2537366218793338

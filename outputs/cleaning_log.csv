@@ -1,0 +1,5 @@
+step,rows_changed
+Validity rules,0
+Hampel spikes (power),15
+Hampel spikes (weather),7
+Irradiance floor,25182
