@@ -1,7 +1,7 @@
 # ASBD End-Semester Hackathon — Power Consumption of Tetouan City
 
 **Student:** Jeswin Tobias J | **Roll No:** CS23I1013
-**Course:** Analytics & Systems of Big Data Practice, IIITDM Kancheepuram (Nov 2025)
+**Course:** Analytics & Systems of Big Data Practice, IIITDM Kancheepuram (21st November 2026)
 **Dataset:** [UCI #849 — Power Consumption of Tetouan City](https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city) (52,416 rows, 10-min intervals, 2017)
 
 ## Layout
